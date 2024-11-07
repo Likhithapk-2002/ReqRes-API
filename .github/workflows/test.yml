@@ -1,0 +1,60 @@
+name: Reqres API Tests
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        type: choice
+        required: true
+        options:
+          - dev
+          - stg
+          - prod
+      run_label:
+        type: string
+        default: ""
+run-name: ${{ github.event.inputs.env }}-reqres-api-${{ github.actor }}-${{ github.sha }}_${{ github.event.inputs.run_label }}
+env:
+  REQRES_API_BASE_URL_DEV: https://reqres.in/api
+  REQRES_API_BASE_URL_STG: https://staging-reqres.in/api
+  REQRES_API_BASE_URL_PROD: https://production-reqres.in/api
+  API_TEST_AUTH_TOKEN: ${{ secrets.REQRES_API_AUTH_TOKEN }}
+
+jobs:
+  run-reqres-tests:
+    timeout-minutes: 10
+    runs-on:
+      - ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+    - name: Install Dependencies
+      run: npm ci
+    - id: set_base_url
+      name: Set Base URL Based on Environment
+      run: |
+        if [[ "${{ github.event.inputs.env }}" == "dev" ]]; then
+          echo "BASE_URL=${{ env.REQRES_API_BASE_URL_DEV }}" >> $GITHUB_ENV
+        elif [[ "${{ github.event.inputs.env }}" == "stg" ]]; then
+          echo "BASE_URL=${{ env.REQRES_API_BASE_URL_STG }}" >> $GITHUB_ENV
+        elif [[ "${{ github.event.inputs.env }}" == "prod" ]]; then
+          echo "BASE_URL=${{ env.REQRES_API_BASE_URL_PROD }}" >> $GITHUB_ENV
+        fi
+    - name: Run API Tests
+      run: npm run test:reqres -- --base-url=${{ env.BASE_URL }} --auth-token=${{ secrets.REQRES_API_AUTH_TOKEN }}
+    - uses: actions/upload-artifact@v4
+      if: success() || failure()
+      with:
+        name: reqres-test-report.xml
+        path: ./test-results/reqres-test-report.xml
+    - name: Publish Test Report
+      uses: dorny/test-reporter@v1
+      if: success() || failure()
+      with:
+        name: Reqres API Test Results
+        path: ./test-results/reqres-test-report.xml
+        reporter: java-junit
+   
+      env:
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
